@@ -1,18 +1,82 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import socket from "../services/socket";
+import MessageFeed from "../components/MessageFeed";
 
 function CashierPage() {
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [specialNotes, setSpecialNotes] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [priority, setPriority] = useState("normal");
   const [createdOrder, setCreatedOrder] = useState(null);
   const [error, setError] = useState("");
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [cashierKitchenAssistEnabled, setCashierKitchenAssistEnabled] = useState(false);
+  const [pendingOrders, setPendingOrders] = useState([]);
+  const [readyOrders, setReadyOrders] = useState([]);
+  const [loadingKitchenOrders, setLoadingKitchenOrders] = useState(false);
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
+  const [loyaltyInfo, setLoyaltyInfo] = useState(null);
+  const [loadingLoyalty, setLoadingLoyalty] = useState(false);
+  const [redeemingPoints, setRedeemingPoints] = useState(false);
 
   useEffect(() => {
     fetchMenuItems();
+    fetchKitchenAssistMode();
   }, []);
+
+  useEffect(() => {
+    if (!cashierKitchenAssistEnabled) {
+      return;
+    }
+
+    fetchKitchenOrders();
+  }, [cashierKitchenAssistEnabled]);
+
+  useEffect(() => {
+    if (!customerPhone || customerPhone.trim().length < 5) {
+      setLoyaltyInfo(null);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetchLoyalty(customerPhone.trim());
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [customerPhone]);
+
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      if (cashierKitchenAssistEnabled) {
+        fetchKitchenOrders();
+      }
+    };
+
+    const handleOrderStatusUpdated = () => {
+      if (cashierKitchenAssistEnabled) {
+        fetchKitchenOrders();
+      }
+    };
+
+    const handleKitchenAssistModeUpdated = (payload) => {
+      setCashierKitchenAssistEnabled(Boolean(payload?.enabled));
+    };
+
+    socket.on("order_created", handleOrderCreated);
+    socket.on("order_status_updated", handleOrderStatusUpdated);
+    socket.on("kitchen_assist_mode_updated", handleKitchenAssistModeUpdated);
+
+    return () => {
+      socket.off("order_created", handleOrderCreated);
+      socket.off("order_status_updated", handleOrderStatusUpdated);
+      socket.off("kitchen_assist_mode_updated", handleKitchenAssistModeUpdated);
+    };
+  }, [cashierKitchenAssistEnabled]);
 
   const fetchMenuItems = async () => {
     try {
@@ -109,6 +173,10 @@ function CashierPage() {
 
       const payload = {
         customer_phone: customerPhone,
+        customer_email: customerEmail,
+        special_notes: specialNotes,
+        promo_code: promoCode,
+        priority,
         items: cart.map((item) => ({
           menu_item_id: item.menu_item_id,
           quantity: item.quantity,
@@ -119,6 +187,11 @@ function CashierPage() {
       setCreatedOrder(res.data);
       setCart([]);
       setCustomerPhone("");
+      setCustomerEmail("");
+      setSpecialNotes("");
+      setPromoCode("");
+      setPriority("normal");
+      setLoyaltyInfo(null);
     } catch (err) {
       setError("Failed to place order");
       console.error(err);
@@ -127,173 +200,168 @@ function CashierPage() {
     }
   };
 
+  const fetchKitchenAssistMode = async () => {
+    try {
+      const res = await api.get("/orders/kitchen-assist-mode");
+      setCashierKitchenAssistEnabled(Boolean(res.data?.enabled));
+    } catch (err) {
+      console.error("Failed to load kitchen assist mode:", err);
+    }
+  };
+
+  const fetchKitchenOrders = async () => {
+    try {
+      setLoadingKitchenOrders(true);
+
+      const [pendingRes, readyRes] = await Promise.all([
+        api.get("/orders/pending"),
+        api.get("/orders/ready"),
+      ]);
+
+      setPendingOrders(pendingRes.data || []);
+      setReadyOrders(readyRes.data || []);
+    } catch (err) {
+      setError("Failed to load kitchen queue on cashier");
+      console.error(err);
+    } finally {
+      setLoadingKitchenOrders(false);
+    }
+  };
+
+  const updateOrderStatus = async (orderId, status) => {
+    try {
+      setError("");
+      setUpdatingOrderId(orderId);
+      await api.patch(`/orders/${orderId}/status`, { status });
+      fetchKitchenOrders();
+    } catch (err) {
+      setError(`Failed to mark order as ${status}`);
+      console.error(err);
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  const fetchLoyalty = async (phone) => {
+    try {
+      setLoadingLoyalty(true);
+      const res = await api.get(`/loyalty/${encodeURIComponent(phone)}`);
+      setLoyaltyInfo(res.data);
+    } catch (err) {
+      console.error("Failed to fetch loyalty points:", err);
+    } finally {
+      setLoadingLoyalty(false);
+    }
+  };
+
+  const redeemPoints = async () => {
+    try {
+      if (!customerPhone || !loyaltyInfo?.points) {
+        return;
+      }
+
+      setRedeemingPoints(true);
+      await api.post("/loyalty/redeem", {
+        customer_phone: customerPhone,
+        points: 10,
+      });
+
+      fetchLoyalty(customerPhone);
+    } catch (err) {
+      setError("Failed to redeem points");
+      console.error(err);
+    } finally {
+      setRedeemingPoints(false);
+    }
+  };
+
   return (
-    <div
-      style={{
-        padding: "24px",
-        maxWidth: "1100px",
-        margin: "0 auto",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <h1 style={{ marginBottom: "20px" }}>Cashier Screen</h1>
+    <div className="screen">
+      <header className="screen-header">
+        <h2 className="screen-title">Cashier Screen</h2>
+        <p className="screen-subtitle">Build orders quickly and send them to the kitchen queue.</p>
+      </header>
 
       {error && (
-        <div
-          style={{
-            backgroundColor: "#ffe5e5",
-            color: "#b00020",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            border: "1px solid #ffb3b3",
-          }}
-        >
-          {error}
-        </div>
+        <div className="alert alert-error">{error}</div>
       )}
 
       {createdOrder && (
-        <div
-          style={{
-            marginBottom: "20px",
-            padding: "14px",
-            border: "1px solid #2e7d32",
-            backgroundColor: "#e8f5e9",
-            borderRadius: "8px",
-            color: "#1b5e20",
-          }}
-        >
+        <div className="alert alert-success">
           <strong>Order created successfully.</strong> Token:{" "}
           {createdOrder.token_number}
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr",
-          gap: "24px",
-          alignItems: "start",
-        }}
-      >
+      <div className="grid-split">
         <div>
-          <h2 style={{ marginBottom: "12px" }}>Menu</h2>
+          <div className="card card-muted">
+            <div className="card-header">
+              <h3>Menu</h3>
+            </div>
 
-          {loadingMenu ? (
-            <p>Loading menu items...</p>
-          ) : menuItems.length === 0 ? (
-            <p>No menu items available.</p>
-          ) : (
-            menuItems.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  border: "1px solid #ddd",
-                  borderRadius: "10px",
-                  padding: "16px",
-                  marginBottom: "12px",
-                  backgroundColor: "#fff",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-                }}
-              >
-                <p style={{ margin: "0 0 8px 0", fontSize: "18px" }}>
-                  <strong>{item.name}</strong>
-                </p>
-                <p style={{ margin: "0 0 8px 0" }}>Category: {item.category}</p>
-                <p style={{ margin: "0 0 12px 0" }}>Rs. {item.price}</p>
-                <button
-                  onClick={() => addToCart(item)}
-                  style={{
-                    padding: "8px 14px",
-                    backgroundColor: "#1976d2",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Add to Cart
-                </button>
+            {loadingMenu ? (
+              <p>Loading menu items...</p>
+            ) : menuItems.length === 0 ? (
+              <p>No menu items available.</p>
+            ) : (
+              <div className="menu-grid">
+                {menuItems.map((item) => (
+                  <article key={item.id} className="card">
+                    <h3>{item.name}</h3>
+                    <p className="mini-row">Category: {item.category || "N/A"}</p>
+                    <p className="mini-row">Rs. {item.price}</p>
+                    <button
+                      onClick={() => addToCart(item)}
+                      className="btn btn-primary"
+                    >
+                      Add to Cart
+                    </button>
+                  </article>
+                ))}
               </div>
-            ))
-          )}
+            )}
+          </div>
         </div>
 
-        <div
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: "10px",
-            padding: "16px",
-            backgroundColor: "#fafafa",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-            position: "sticky",
-            top: "20px",
-          }}
-        >
-          <h2 style={{ marginTop: 0, marginBottom: "12px" }}>Cart</h2>
+        <aside className="card card-muted">
+          <div className="card-header">
+            <h3>Cart</h3>
+          </div>
 
           {cart.length === 0 ? (
             <p>No items yet</p>
           ) : (
             <>
               {cart.map((item) => (
-                <div
-                  key={item.menu_item_id}
-                  style={{
-                    border: "1px solid #ccc",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    marginBottom: "10px",
-                    backgroundColor: "white",
-                  }}
-                >
-                  <div style={{ marginBottom: "8px" }}>
+                <div key={item.menu_item_id} className="card">
+                  <div>
                     <strong>{item.name}</strong>
                   </div>
 
-                  <div style={{ marginBottom: "8px" }}>
+                  <div className="mini-row">
                     Rs. {item.price} x {item.quantity} = Rs.{" "}
                     {Number(item.price) * item.quantity}
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <div className="btn-row">
                     <button
                       onClick={() => decreaseQuantity(item.menu_item_id)}
-                      style={{
-                        padding: "6px 10px",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        backgroundColor: "#f0f0f0",
-                      }}
+                      className="btn btn-soft"
                     >
                       -
                     </button>
 
                     <button
                       onClick={() => increaseQuantity(item.menu_item_id)}
-                      style={{
-                        padding: "6px 10px",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        backgroundColor: "#f0f0f0",
-                      }}
+                      className="btn btn-soft"
                     >
                       +
                     </button>
 
                     <button
                       onClick={() => removeFromCart(item.menu_item_id)}
-                      style={{
-                        padding: "6px 10px",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        backgroundColor: "#d32f2f",
-                        color: "white",
-                      }}
+                      className="btn btn-danger"
                     >
                       Remove
                     </button>
@@ -303,23 +371,14 @@ function CashierPage() {
 
               <button
                 onClick={clearCart}
-                style={{
-                  marginTop: "4px",
-                  marginBottom: "12px",
-                  padding: "8px 12px",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  backgroundColor: "#616161",
-                  color: "white",
-                }}
+                className="btn btn-soft"
               >
                 Clear Cart
               </button>
             </>
           )}
 
-          <p style={{ fontSize: "18px", marginTop: "12px" }}>
+          <p style={{ marginTop: "12px", marginBottom: "10px", fontWeight: 700 }}>
             <strong>Total:</strong> Rs. {getTotal()}
           </p>
 
@@ -328,36 +387,141 @@ function CashierPage() {
             placeholder="Customer phone"
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
-            style={{
-              padding: "10px",
-              width: "100%",
-              boxSizing: "border-box",
-              marginBottom: "12px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
-            }}
+            className="field"
           />
+
+          <input
+            type="email"
+            placeholder="Customer email (optional)"
+            value={customerEmail}
+            onChange={(e) => setCustomerEmail(e.target.value)}
+            className="field"
+            style={{ marginTop: "10px" }}
+          />
+
+          <input
+            type="text"
+            placeholder="Promo code (optional)"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value)}
+            className="field"
+            style={{ marginTop: "10px" }}
+          />
+
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            className="field"
+            style={{ marginTop: "10px" }}
+          >
+            <option value="normal">Normal Priority</option>
+            <option value="urgent">Urgent</option>
+            <option value="vip">VIP</option>
+            <option value="bulk">Bulk</option>
+          </select>
+
+          <textarea
+            placeholder="Special notes (e.g. extra cheese, less sugar)"
+            value={specialNotes}
+            onChange={(e) => setSpecialNotes(e.target.value)}
+            className="field"
+            rows={3}
+            style={{ marginTop: "10px" }}
+          />
+
+          <div className="card" style={{ marginTop: "10px" }}>
+            <p><strong>Loyalty</strong></p>
+            {loadingLoyalty ? (
+              <p className="mini-row">Checking points...</p>
+            ) : (
+              <p className="mini-row">Current points: {loyaltyInfo?.points || 0}</p>
+            )}
+
+            <button
+              onClick={redeemPoints}
+              className="btn btn-soft"
+              disabled={redeemingPoints || !loyaltyInfo?.points || loyaltyInfo.points < 10}
+              style={{ marginTop: "8px" }}
+            >
+              {redeemingPoints ? "Redeeming..." : "Redeem 10 points"}
+            </button>
+          </div>
 
           <button
             onClick={placeOrder}
             disabled={cart.length === 0 || placingOrder}
-            style={{
-              width: "100%",
-              padding: "12px",
-              border: "none",
-              borderRadius: "6px",
-              cursor: cart.length === 0 || placingOrder ? "not-allowed" : "pointer",
-              backgroundColor:
-                cart.length === 0 || placingOrder ? "#bdbdbd" : "#2e7d32",
-              color: "white",
-              fontSize: "16px",
-              fontWeight: "bold",
-            }}
+            className="btn btn-success"
+            style={{ width: "100%", marginTop: "10px", padding: "12px" }}
           >
             {placingOrder ? "Placing Order..." : "Place Order"}
           </button>
-        </div>
+        </aside>
       </div>
+
+      {cashierKitchenAssistEnabled && (
+        <section style={{ marginTop: "20px" }}>
+          <div className="card card-muted">
+            <div className="card-header">
+              <h3>Kitchen Assist on Cashier</h3>
+              <span className="chip chip-ready">Enabled by Admin</span>
+            </div>
+
+            {loadingKitchenOrders ? (
+              <p>Loading kitchen queue...</p>
+            ) : (
+              <div className="grid-columns-2">
+                <div className="card">
+                  <h3 style={{ marginBottom: "10px" }}>Pending Orders ({pendingOrders.length})</h3>
+                  {pendingOrders.length === 0 ? (
+                    <p>No pending orders</p>
+                  ) : (
+                    <div className="list">
+                      {pendingOrders.map((order) => (
+                        <div key={order.id} className="card card-muted">
+                          <p><strong>Token:</strong> {order.token_number}</p>
+                          <p className="mini-row">Total: Rs. {order.total_amount}</p>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => updateOrderStatus(order.id, "READY")}
+                            disabled={updatingOrderId === order.id}
+                          >
+                            {updatingOrderId === order.id ? "Updating..." : "Mark Ready"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card">
+                  <h3 style={{ marginBottom: "10px" }}>Ready Orders ({readyOrders.length})</h3>
+                  {readyOrders.length === 0 ? (
+                    <p>No ready orders</p>
+                  ) : (
+                    <div className="list">
+                      {readyOrders.map((order) => (
+                        <div key={order.id} className="card card-muted">
+                          <p><strong>Token:</strong> {order.token_number}</p>
+                          <p className="mini-row">Total: Rs. {order.total_amount}</p>
+                          <button
+                            className="btn btn-success"
+                            onClick={() => updateOrderStatus(order.id, "COMPLETED")}
+                            disabled={updatingOrderId === order.id}
+                          >
+                            {updatingOrderId === order.id ? "Updating..." : "Mark Completed"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      <MessageFeed audience="cashier" />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import socket from "../services/socket";
+import MessageFeed from "../components/MessageFeed";
 
 function KitchenPage() {
   const [pendingOrders, setPendingOrders] = useState([]);
@@ -60,6 +61,20 @@ function KitchenPage() {
     }
   };
 
+  const markInProgress = async (id) => {
+    try {
+      setError("");
+      setUpdatingOrderId(id);
+      await api.patch(`/orders/${id}/status`, { status: "IN_PROGRESS" });
+      fetchOrders();
+    } catch (err) {
+      setError("Failed to mark order as IN_PROGRESS");
+      console.error(err);
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
   const markCompleted = async (id) => {
     try {
       setError("");
@@ -80,119 +95,77 @@ function KitchenPage() {
   };
 
   const OrderCard = ({ order, type }) => (
-    <div
-      style={{
-        border: "1px solid #ddd",
-        borderRadius: "10px",
-        padding: "16px",
-        marginBottom: "14px",
-        backgroundColor: "#fff",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "10px",
-          flexWrap: "wrap",
-          gap: "10px",
-        }}
-      >
+    <div className="card">
+      <div className="card-header">
         <h3 style={{ margin: 0 }}>Token: {order.token_number}</h3>
-        <span
-          style={{
-            padding: "6px 12px",
-            borderRadius: "20px",
-            backgroundColor:
-              order.status === "PENDING" ? "#fff3cd" : "#d1e7dd",
-            color: order.status === "PENDING" ? "#856404" : "#0f5132",
-            fontWeight: "bold",
-            fontSize: "14px",
-          }}
-        >
+        <span className={`chip ${order.status === "PENDING" ? "chip-pending" : "chip-ready"}`}>
           {order.status}
         </span>
       </div>
 
-      <p style={{ margin: "6px 0" }}>
+      <p className="mini-row">
         <strong>Phone:</strong> {order.customer_phone || "N/A"}
       </p>
-      <p style={{ margin: "6px 0" }}>
+      <p className="mini-row">
         <strong>Total:</strong> Rs. {order.total_amount}
       </p>
-      <p style={{ margin: "6px 0" }}>
+      <p className="mini-row">
+        <strong>Priority:</strong> {order.priority || "normal"}
+      </p>
+      <p className="mini-row">
         <strong>Created At:</strong> {formatDateTime(order.created_at)}
       </p>
+      <p className="mini-row">
+        <strong>Special Notes:</strong> {order.special_notes || "-"}
+      </p>
 
-      <div
-        style={{
-          marginTop: "12px",
-          marginBottom: "12px",
-          padding: "12px",
-          backgroundColor: "#f9f9f9",
-          borderRadius: "8px",
-          border: "1px solid #eee",
-        }}
-      >
-        <p style={{ marginTop: 0, marginBottom: "10px" }}>
+      <div className="card card-muted" style={{ marginTop: "12px", marginBottom: "12px" }}>
+        <p style={{ marginBottom: "10px" }}>
           <strong>Items</strong>
         </p>
 
         {order.items && order.items.length > 0 ? (
-          order.items.map((item, index) => (
-            <div
-              key={index}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "6px",
-                paddingBottom: "6px",
-                borderBottom: "1px solid #eee",
-              }}
-            >
-              <span>{item.name}</span>
-              <span>x {item.quantity}</span>
-            </div>
-          ))
+          <div className="list">
+            {order.items.map((item, index) => (
+              <div key={index} className="order-item">
+                <span>{item.name}</span>
+                <span>x {item.quantity}</span>
+              </div>
+            ))}
+          </div>
         ) : (
           <p style={{ margin: 0 }}>No items found</p>
         )}
       </div>
 
-      <div style={{ marginTop: "14px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+      <div className="btn-row">
         {type === "pending" && (
-          <button
-            onClick={() => markReady(order.id)}
-            disabled={updatingOrderId === order.id}
-            style={{
-              padding: "10px 16px",
-              border: "none",
-              borderRadius: "6px",
-              backgroundColor: "#1976d2",
-              color: "white",
-              cursor: updatingOrderId === order.id ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            {updatingOrderId === order.id ? "Updating..." : "Mark Ready"}
-          </button>
+          <>
+            {order.status === "PENDING" && (
+              <button
+                onClick={() => markInProgress(order.id)}
+                disabled={updatingOrderId === order.id}
+                className="btn btn-soft"
+              >
+                {updatingOrderId === order.id ? "Updating..." : "Start Prep"}
+              </button>
+            )}
+
+            <button
+              onClick={() => markReady(order.id)}
+              disabled={updatingOrderId === order.id}
+              className="btn btn-primary"
+            >
+              {updatingOrderId === order.id ? "Updating..." : "Mark Ready"}
+            </button>
+          </>
         )}
 
         {type === "ready" && (
           <button
             onClick={() => markCompleted(order.id)}
             disabled={updatingOrderId === order.id}
-            style={{
-              padding: "10px 16px",
-              border: "none",
-              borderRadius: "6px",
-              backgroundColor: "#2e7d32",
-              color: "white",
-              cursor: updatingOrderId === order.id ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-            }}
+            className="btn btn-success"
           >
             {updatingOrderId === order.id ? "Updating..." : "Mark Completed"}
           </button>
@@ -202,86 +175,52 @@ function KitchenPage() {
   );
 
   return (
-    <div
-      style={{
-        padding: "24px",
-        maxWidth: "1200px",
-        margin: "0 auto",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <h1 style={{ marginBottom: "20px" }}>Kitchen Screen</h1>
+    <div className="screen">
+      <header className="screen-header">
+        <h2 className="screen-title">Kitchen Screen</h2>
+        <p className="screen-subtitle">Track pending drinks and move them through preparation states.</p>
+      </header>
 
       {error && (
-        <div
-          style={{
-            backgroundColor: "#ffe5e5",
-            color: "#b00020",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            border: "1px solid #ffb3b3",
-          }}
-        >
-          {error}
-        </div>
+        <div className="alert alert-error">{error}</div>
       )}
 
       {loading ? (
         <p>Loading kitchen orders...</p>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "24px",
-            alignItems: "start",
-          }}
-        >
-          <div
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: "12px",
-              padding: "16px",
-              backgroundColor: "#fafafa",
-              minHeight: "300px",
-            }}
-          >
-            <h2 style={{ marginTop: 0, marginBottom: "14px" }}>
-              Pending Orders ({pendingOrders.length})
-            </h2>
+        <>
+          <div className="grid-columns-2">
+            <div className="card card-muted" style={{ minHeight: "300px" }}>
+              <h2 style={{ marginTop: 0, marginBottom: "14px" }}>
+                Pending Orders ({pendingOrders.length})
+              </h2>
 
-            {pendingOrders.length === 0 ? (
-              <p>No pending orders</p>
-            ) : (
-              pendingOrders.map((order) => (
-                <OrderCard key={order.id} order={order} type="pending" />
-              ))
-            )}
+              {pendingOrders.length === 0 ? (
+                <p>No pending orders</p>
+              ) : (
+                pendingOrders.map((order) => (
+                  <OrderCard key={order.id} order={order} type="pending" />
+                ))
+              )}
+            </div>
+
+            <div className="card card-muted" style={{ minHeight: "300px" }}>
+              <h2 style={{ marginTop: 0, marginBottom: "14px" }}>
+                Ready Orders ({readyOrders.length})
+              </h2>
+
+              {readyOrders.length === 0 ? (
+                <p>No ready orders</p>
+              ) : (
+                readyOrders.map((order) => (
+                  <OrderCard key={order.id} order={order} type="ready" />
+                ))
+              )}
+            </div>
           </div>
 
-          <div
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: "12px",
-              padding: "16px",
-              backgroundColor: "#fafafa",
-              minHeight: "300px",
-            }}
-          >
-            <h2 style={{ marginTop: 0, marginBottom: "14px" }}>
-              Ready Orders ({readyOrders.length})
-            </h2>
-
-            {readyOrders.length === 0 ? (
-              <p>No ready orders</p>
-            ) : (
-              readyOrders.map((order) => (
-                <OrderCard key={order.id} order={order} type="ready" />
-              ))
-            )}
-          </div>
-        </div>
+          <MessageFeed audience="kitchen" />
+        </>
       )}
     </div>
   );

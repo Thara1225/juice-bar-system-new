@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import socket from "../services/socket";
+import MessageFeed from "../components/MessageFeed";
 
 function DisplayPage() {
   const [readyOrders, setReadyOrders] = useState([]);
@@ -34,46 +35,31 @@ function DisplayPage() {
   }, []);
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "pink",
-        color: "white",
-        padding: "40px",
-        textAlign: "center",
-      }}
-    >
-      <h1 style={{ fontSize: "48px", marginBottom: "30px" }}>Ready Orders</h1>
+    <div className="screen">
+      <section className="token-board">
+        <header className="screen-header" style={{ marginBottom: "24px" }}>
+          <h2 className="screen-title" style={{ color: "white" }}>Ready Orders</h2>
+          <p className="screen-subtitle" style={{ color: "rgba(255,255,255,0.9)" }}>
+            Call these token numbers for pickup.
+          </p>
+        </header>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+        {error && <div className="alert alert-error">{error}</div>}
 
-      {readyOrders.length === 0 ? (
-        <p style={{ fontSize: "28px" }}>No ready orders yet</p>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "20px",
-            marginTop: "30px",
-          }}
-        >
-          {readyOrders.map((order) => (
-            <div
-              key={order.id}
-              style={{
-                border: "2px solid white",
-                borderRadius: "12px",
-                padding: "30px",
-                fontSize: "40px",
-                fontWeight: "bold",
-              }}
-            >
-              {order.token_number}
-            </div>
-          ))}
-        </div>
-      )}
+        {readyOrders.length === 0 ? (
+          <p style={{ fontSize: "1.35rem", fontWeight: 700 }}>No ready orders yet</p>
+        ) : (
+          <div className="token-grid">
+            {readyOrders.map((order) => (
+              <div key={order.id} className="token-pill">
+                {order.token_number}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <MessageFeed audience="display" />
     </div>
   );
 }

@@ -1,11 +1,12 @@
 const { Server } = require("socket.io");
 const { setSocketInstance } = require("../controllers/orderController");
+const { setSocketInstance: setMessageSocketInstance } = require("../controllers/messageController");
 
 const setupSocket = (server) => {
   const io = new Server(server, {
     cors: {
       origin: process.env.CLIENT_URL,
-      methods: ["GET", "POST", "PATCH"],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     },
   });
 
@@ -18,6 +19,7 @@ const setupSocket = (server) => {
   });
 
   setSocketInstance(io);
+  setMessageSocketInstance(io);
 };
 
 module.exports = setupSocket;
