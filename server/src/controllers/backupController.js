@@ -1,8 +1,10 @@
 const {
   createBackup,
   restoreBackup,
+  deleteBackup,
   cleanupOldBackups,
   listBackups,
+  resolveBackupFilePath,
 } = require("../services/dbBackupService");
 
 const listAvailableBackups = async (req, res) => {
@@ -38,8 +40,42 @@ const triggerRestore = async (req, res) => {
   }
 };
 
+const downloadBackupFile = async (req, res) => {
+  try {
+    const fileName = String(req.params.fileName || "").trim();
+
+    if (!fileName) {
+      return res.status(400).json({ error: "fileName is required" });
+    }
+
+    const resolved = resolveBackupFilePath(fileName);
+    return res.download(resolved.filePath, resolved.fileName);
+  } catch (error) {
+    const statusCode = String(error.message || "").includes("not found") ? 404 : 400;
+    return res.status(statusCode).json({ error: `Download failed: ${error.message}` });
+  }
+};
+
+const deleteBackupFile = async (req, res) => {
+  try {
+    const fileName = String(req.params.fileName || "").trim();
+
+    if (!fileName) {
+      return res.status(400).json({ error: "fileName is required" });
+    }
+
+    const result = await deleteBackup(fileName);
+    return res.json(result);
+  } catch (error) {
+    const statusCode = String(error.message || "").includes("not found") ? 404 : 400;
+    return res.status(statusCode).json({ error: `Delete failed: ${error.message}` });
+  }
+};
+
 module.exports = {
   listAvailableBackups,
   triggerBackup,
   triggerRestore,
+  downloadBackupFile,
+  deleteBackupFile,
 };

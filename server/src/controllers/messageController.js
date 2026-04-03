@@ -34,6 +34,8 @@ const getMessages = async (req, res) => {
 };
 
 const createMessage = async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const content = String(req.body.content || "").trim();
     const audience = String(req.body.audience || "all").trim().toLowerCase();
@@ -46,12 +48,23 @@ const createMessage = async (req, res) => {
       return res.status(400).json({ error: "Invalid audience" });
     }
 
-    const result = await pool.query(
+    await client.query("BEGIN");
+
+    // Keep announcement boards clean: new message replaces older active ones.
+    await client.query(
+      `UPDATE messages
+       SET is_active = FALSE
+       WHERE is_active = TRUE`
+    );
+
+    const result = await client.query(
       `INSERT INTO messages (content, audience)
        VALUES ($1, $2)
        RETURNING id, content, audience, is_active, created_at`,
       [content, audience]
     );
+
+    await client.query("COMMIT");
 
     const createdMessage = result.rows[0];
 
@@ -61,8 +74,11 @@ const createMessage = async (req, res) => {
 
     res.status(201).json(createdMessage);
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("Error creating message:", error.message);
     res.status(500).json({ error: "Failed to create message" });
+  } finally {
+    client.release();
   }
 };
 

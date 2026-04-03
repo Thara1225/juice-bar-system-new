@@ -2,8 +2,12 @@ const pool = require("../config/db");
 
 const getMenuItems = async (req, res) => {
   try {
+    const includeUnavailable = String(req.query.include_unavailable || "").toLowerCase() === "true";
+
     const result = await pool.query(
-      "SELECT * FROM menu_items ORDER BY id ASC"
+      includeUnavailable
+        ? "SELECT * FROM menu_items ORDER BY id ASC"
+        : "SELECT * FROM menu_items WHERE is_available = TRUE ORDER BY id ASC"
     );
     res.json(result.rows);
   } catch (error) {

@@ -84,42 +84,56 @@ function App() {
     <BrowserRouter>
       <div className="app-shell">
         <header className="app-header">
-          <div className="app-brand">
-            <p className="app-eyebrow">{businessSettings.business_name} System</p>
-            {businessSettings.logo_url && (
-              <img
-                src={businessSettings.logo_url}
-                alt={`${businessSettings.business_name} logo`}
-                className="brand-logo"
-              />
-            )}
-            <h1>Operations Dashboard</h1>
-          </div>
-
-          {auth ? (
-            <>
-              <nav className="app-nav" aria-label="Main navigation">
-                {navItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) =>
-                      isActive ? "app-nav-link is-active" : "app-nav-link"
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                ))}
-              </nav>
-
-              <div className="btn-row" style={{ marginTop: "12px" }}>
-                <span className="mini-row">Signed in as: {auth.user.username} ({auth.user.role})</span>
-                <button className="btn btn-soft" onClick={handleLogout}>
-                  Logout
-                </button>
+          <div className="app-header-inner">
+            <div className="app-header-top">
+              <div className="app-brand">
+                <p className="app-eyebrow">{businessSettings.business_name} System</p>
+                <div className="app-brand-main">
+                  {businessSettings.logo_url && (
+                    <img
+                      src={businessSettings.logo_url}
+                      alt={`${businessSettings.business_name} logo`}
+                      className="brand-logo"
+                    />
+                  )}
+                  <div className="app-brand-copy">
+                    <h1>Operations Dashboard</h1>
+                    <p className="mini-row">Fast service control for cashier, kitchen, display, and admin.</p>
+                  </div>
+                </div>
               </div>
-            </>
-          ) : null}
+
+              <div className="header-business-details" aria-label="Business details">
+                <p><strong>Contact:</strong> {businessSettings.contact_number || "Not set"}</p>
+                <p><strong>Address:</strong> {businessSettings.address || "Address not set"}</p>
+              </div>
+            </div>
+
+            {auth ? (
+              <>
+                <nav className="app-nav" aria-label="Main navigation">
+                  {navItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        isActive ? "app-nav-link is-active" : "app-nav-link"
+                      }
+                    >
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </nav>
+
+                <div className="auth-strip" style={{ marginTop: "12px" }}>
+                  <span className="mini-row">Signed in as: {auth.user.username} ({auth.user.role})</span>
+                  <button className="btn btn-soft" onClick={handleLogout}>
+                    Logout
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
         </header>
 
         <main className="app-main">
@@ -148,7 +162,7 @@ function App() {
           </Routes>
         </main>
 
-        <CompanyFooter settings={businessSettings} />
+        <CompanyFooter />
       </div>
     </BrowserRouter>
   );

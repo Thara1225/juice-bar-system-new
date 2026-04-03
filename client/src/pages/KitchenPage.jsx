@@ -89,6 +89,25 @@ function KitchenPage() {
     }
   };
 
+  const cancelOrder = async (id) => {
+    try {
+      setError("");
+      setUpdatingOrderId(id);
+
+      setPendingOrders((current) => current.filter((order) => order.id !== id));
+      setReadyOrders((current) => current.filter((order) => order.id !== id));
+
+      await api.patch(`/orders/${id}/status`, { status: "CANCELLED" });
+      await fetchOrders();
+    } catch (err) {
+      setError(err?.response?.data?.error || "Failed to cancel order");
+      await fetchOrders();
+      console.error(err);
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
   const formatDateTime = (dateString) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleString();
@@ -158,6 +177,16 @@ function KitchenPage() {
             >
               {updatingOrderId === order.id ? "Updating..." : "Mark Ready"}
             </button>
+
+            {["PENDING", "IN_PROGRESS"].includes(order.status) && (
+              <button
+                onClick={() => cancelOrder(order.id)}
+                disabled={updatingOrderId === order.id}
+                className="btn btn-danger"
+              >
+                {updatingOrderId === order.id ? "Cancelling..." : "Cancel Order"}
+              </button>
+            )}
           </>
         )}
 

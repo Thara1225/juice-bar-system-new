@@ -1,4 +1,20 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: juice_bar_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d juice_bar_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   server:
     build:
       context: ./server
@@ -6,8 +22,11 @@ services:
       - "5000:5000"
     environment:
       PORT: 5000
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:password@db:5432/juice_bar_db}
       CLIENT_URL: http://localhost:5173
+    depends_on:
+      db:
+        condition: service_healthy
 
   client:
     build:
@@ -16,3 +35,6 @@ services:
       - "5173:80"
     depends_on:
       - server
+
+volumes:
+  postgres_data:

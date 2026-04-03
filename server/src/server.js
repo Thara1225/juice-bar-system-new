@@ -33,7 +33,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 }));
 app.use(morgan("combined"));
-app.use(express.json());
+app.use(express.json({ limit: "8mb" }));
 
 app.get("/", (req, res) => {
   res.send("Juice Bar API is running");

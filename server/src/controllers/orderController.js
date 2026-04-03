@@ -220,6 +220,10 @@ const createOrder = async (req, res) => {
       }
 
       const menuItem = menuResult.rows[0];
+      if (!menuItem.is_available) {
+        throw new Error(`Menu item ${menuItem.name} is currently unavailable`);
+      }
+
       subtotalAmount += toNumber(menuItem.price) * toNumber(item.quantity);
     }
 
@@ -258,6 +262,10 @@ const createOrder = async (req, res) => {
     for (const item of items) {
       const menuResult = await client.query("SELECT * FROM menu_items WHERE id = $1", [item.menu_item_id]);
       const menuItem = menuResult.rows[0];
+
+      if (!menuItem.is_available) {
+        throw new Error(`Menu item ${menuItem.name} is currently unavailable`);
+      }
 
       await client.query(
         `INSERT INTO order_items (order_id, menu_item_id, quantity, item_price)
@@ -604,7 +612,7 @@ const updateOrderStatus = async (req, res) => {
     const { id } = req.params;
     const status = String(req.body.status || "").toUpperCase();
 
-    if (!["IN_PROGRESS", "READY", "COMPLETED"].includes(status)) {
+    if (!["IN_PROGRESS", "READY", "COMPLETED", "CANCELLED"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
 
@@ -615,6 +623,13 @@ const updateOrderStatus = async (req, res) => {
 
     const order = current.rows[0];
 
+    // Allow cancellation only before an order becomes READY.
+    if (status === "CANCELLED" && ["READY", "COMPLETED", "CANCELLED"].includes(order.status)) {
+      return res.status(400).json({
+        error: "Cannot cancel this order because it is already ready/completed or already cancelled.",
+      });
+    }
+
     let query = "UPDATE orders SET status = $1";
     const params = [status];
 
@@ -624,6 +639,10 @@ const updateOrderStatus = async (req, res) => {
 
     if (status === "READY") {
       query += ", ready_at = NOW()";
+    }
+
+    if (status === "CANCELLED") {
+      query += ", cancelled_at = NOW()";
     }
 
     query += " WHERE id = $2 RETURNING *";

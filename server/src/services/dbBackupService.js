@@ -51,6 +51,34 @@ const parseDatabaseUrl = () => {
   };
 };
 
+const resolveBackupFilePath = (backupFileName) => {
+  ensureBackupDir();
+
+  const rawName = String(backupFileName || "").trim();
+  if (!rawName) {
+    throw new Error("Backup file name is required");
+  }
+
+  const safeFileName = path.basename(rawName);
+  if (safeFileName !== rawName) {
+    throw new Error("Invalid backup file name");
+  }
+
+  if (!safeFileName.endsWith(".dump")) {
+    throw new Error("Only .dump backup files are supported");
+  }
+
+  const filePath = path.join(BACKUP_DIR, safeFileName);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Backup file not found: ${safeFileName}`);
+  }
+
+  return {
+    fileName: safeFileName,
+    filePath,
+  };
+};
+
 const createBackup = async () => {
   ensureBackupDir();
 
@@ -79,14 +107,8 @@ const createBackup = async () => {
 };
 
 const restoreBackup = async (backupFileName) => {
-  ensureBackupDir();
-
   const db = parseDatabaseUrl();
-  const filePath = path.join(BACKUP_DIR, backupFileName);
-
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Backup file not found: ${backupFileName}`);
-  }
+  const { filePath } = resolveBackupFilePath(backupFileName);
 
   await runCommand(
     process.env.PG_RESTORE_BIN || "pg_restore",
@@ -106,6 +128,17 @@ const restoreBackup = async (backupFileName) => {
   );
 
   return { restoredFrom: backupFileName, restoredAt: new Date().toISOString() };
+};
+
+const deleteBackup = async (backupFileName) => {
+  const { fileName, filePath } = resolveBackupFilePath(backupFileName);
+
+  fs.unlinkSync(filePath);
+
+  return {
+    deletedFile: fileName,
+    deletedAt: new Date().toISOString(),
+  };
 };
 
 const cleanupOldBackups = () => {
@@ -151,6 +184,8 @@ const listBackups = () => {
 module.exports = {
   createBackup,
   restoreBackup,
+  deleteBackup,
   cleanupOldBackups,
   listBackups,
+  resolveBackupFilePath,
 };

@@ -193,7 +193,12 @@ function CashierPage() {
       setPriority("normal");
       setLoyaltyInfo(null);
     } catch (err) {
-      setError("Failed to place order");
+      const message = err?.response?.data?.error;
+      if (err?.response?.status === 401) {
+        setError("Your session expired. Please sign in again.");
+      } else {
+        setError(message || "Failed to place order");
+      }
       console.error(err);
     } finally {
       setPlacingOrder(false);
@@ -232,10 +237,20 @@ function CashierPage() {
     try {
       setError("");
       setUpdatingOrderId(orderId);
+
+      if (status === "CANCELLED") {
+        setPendingOrders((current) => current.filter((order) => order.id !== orderId));
+        setReadyOrders((current) => current.filter((order) => order.id !== orderId));
+      }
+
       await api.patch(`/orders/${orderId}/status`, { status });
-      fetchKitchenOrders();
+      await fetchKitchenOrders();
     } catch (err) {
-      setError(`Failed to mark order as ${status}`);
+      setError(
+        err?.response?.data?.error
+        || `Failed to ${status === "CANCELLED" ? "cancel" : "mark " + status} order`
+      );
+      await fetchKitchenOrders();
       console.error(err);
     } finally {
       setUpdatingOrderId(null);
@@ -274,6 +289,13 @@ function CashierPage() {
       setRedeemingPoints(false);
     }
   };
+
+  const placeOrderDisabled = cart.length === 0 || placingOrder;
+  const placeOrderDisabledReason = placingOrder
+    ? "Placing order..."
+    : cart.length === 0
+      ? "Add at least one item to cart before placing an order."
+      : "";
 
   return (
     <div className="screen">
@@ -449,12 +471,19 @@ function CashierPage() {
 
           <button
             onClick={placeOrder}
-            disabled={cart.length === 0 || placingOrder}
+            disabled={placeOrderDisabled}
             className="btn btn-success"
+            title={placeOrderDisabledReason || "Place order"}
             style={{ width: "100%", marginTop: "10px", padding: "12px" }}
           >
             {placingOrder ? "Placing Order..." : "Place Order"}
           </button>
+
+          {placeOrderDisabledReason && (
+            <p className="mini-row" style={{ marginTop: "8px" }}>
+              {placeOrderDisabledReason}
+            </p>
+          )}
         </aside>
       </div>
 
@@ -480,13 +509,24 @@ function CashierPage() {
                         <div key={order.id} className="card card-muted">
                           <p><strong>Token:</strong> {order.token_number}</p>
                           <p className="mini-row">Total: Rs. {order.total_amount}</p>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => updateOrderStatus(order.id, "READY")}
-                            disabled={updatingOrderId === order.id}
-                          >
-                            {updatingOrderId === order.id ? "Updating..." : "Mark Ready"}
-                          </button>
+                          <div className="btn-row">
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => updateOrderStatus(order.id, "READY")}
+                              disabled={updatingOrderId === order.id}
+                            >
+                              {updatingOrderId === order.id ? "Updating..." : "Mark Ready"}
+                            </button>
+                            {["PENDING", "IN_PROGRESS"].includes(order.status) && (
+                              <button
+                                className="btn btn-danger"
+                                onClick={() => updateOrderStatus(order.id, "CANCELLED")}
+                                disabled={updatingOrderId === order.id}
+                              >
+                                {updatingOrderId === order.id ? "Cancelling..." : "Cancel"}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

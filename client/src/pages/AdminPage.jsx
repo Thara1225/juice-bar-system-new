@@ -11,7 +11,11 @@ function AdminPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [selectedLogoName, setSelectedLogoName] = useState("");
   const [showAllOrders, setShowAllOrders] = useState(false);
+  const [showDailySales, setShowDailySales] = useState(false);
+  const [showMonthlySales, setShowMonthlySales] = useState(false);
+  const [showLoyaltyLeaderboard, setShowLoyaltyLeaderboard] = useState(false);
   const [orderFilters, setOrderFilters] = useState({
     status: "",
     phone: "",
@@ -21,7 +25,6 @@ function AdminPage() {
   });
   const [salesSummary, setSalesSummary] = useState({ daily: [], monthly: [] });
   const [promoCodes, setPromoCodes] = useState([]);
-  const [lowStockAlerts, setLowStockAlerts] = useState([]);
   const [users, setUsers] = useState([]);
   const [backups, setBackups] = useState([]);
   const [promoForm, setPromoForm] = useState({
@@ -29,12 +32,6 @@ function AdminPage() {
     discount_type: "percentage",
     discount_value: "",
     min_order_amount: "",
-  });
-  const [ingredientForm, setIngredientForm] = useState({
-    name: "",
-    stock_quantity: "",
-    unit: "",
-    reorder_level: "",
   });
   const [userForm, setUserForm] = useState({
     username: "",
@@ -77,11 +74,10 @@ function AdminPage() {
         messagesRes,
         summaryRes,
         promoRes,
-        lowStockRes,
         usersRes,
         backupsRes,
       ] = await Promise.all([
-        api.get("/menu-items"),
+        api.get("/menu-items", { params: { include_unavailable: true } }),
         api.get("/orders", { params: orderFilters }),
         api.get("/orders/kitchen-assist-mode"),
         api.get("/settings"),
@@ -89,7 +85,6 @@ function AdminPage() {
         api.get("/messages", { params: { audience: "admin" } }),
         api.get("/orders/summary", { params: orderFilters }),
         api.get("/promotions/codes"),
-        api.get("/inventory/alerts/low-stock"),
         api.get("/users"),
         api.get("/backups"),
       ]);
@@ -103,11 +98,11 @@ function AdminPage() {
         contact_number: settingsRes.data?.contact_number || "",
         address: settingsRes.data?.address || "",
       });
+      setSelectedLogoName("");
       setLoyaltyLeaderboard(leaderboardRes.data || []);
       setMessages(messagesRes.data || []);
       setSalesSummary(summaryRes.data || { daily: [], monthly: [] });
       setPromoCodes(promoRes.data || []);
-      setLowStockAlerts(lowStockRes.data || []);
       setUsers(usersRes.data || []);
       setBackups(backupsRes.data || []);
     } catch (err) {
@@ -238,11 +233,57 @@ function AdminPage() {
       await api.put("/settings", businessSettings);
       fetchData();
     } catch (err) {
-      setError("Failed to save business settings");
+      setError(err?.response?.data?.error || "Failed to save business settings");
       console.error(err);
     } finally {
       setSavingSettings(false);
     }
+  };
+
+  const handleLogoFileChange = (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please upload JPG, PNG, WEBP, or GIF image.");
+      event.target.value = "";
+      return;
+    }
+
+    const maxFileSize = 5 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      setError("Logo file is too large. Please use an image under 5MB.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setError("");
+      setSelectedLogoName(file.name);
+      setBusinessSettings((prev) => ({
+        ...prev,
+        logo_url: String(reader.result || ""),
+      }));
+    };
+
+    reader.onerror = () => {
+      setError("Failed to read logo file.");
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const clearLogo = () => {
+    setSelectedLogoName("");
+    setBusinessSettings((prev) => ({
+      ...prev,
+      logo_url: "",
+    }));
   };
 
   const sendMessage = async (e) => {
@@ -283,24 +324,6 @@ function AdminPage() {
       fetchData();
     } catch (err) {
       setError("Failed to create promo code");
-      console.error(err);
-    }
-  };
-
-  const createIngredient = async (e) => {
-    e.preventDefault();
-
-    try {
-      await api.post("/inventory/ingredients", {
-        ...ingredientForm,
-        stock_quantity: Number(ingredientForm.stock_quantity || 0),
-        reorder_level: Number(ingredientForm.reorder_level || 10),
-      });
-
-      setIngredientForm({ name: "", stock_quantity: "", unit: "", reorder_level: "" });
-      fetchData();
-    } catch (err) {
-      setError("Failed to create ingredient");
       console.error(err);
     }
   };
@@ -367,6 +390,40 @@ function AdminPage() {
     }
   };
 
+  const downloadBackup = async (fileName) => {
+    try {
+      const response = await api.get(`/backups/download/${encodeURIComponent(fileName)}`, {
+        responseType: "blob",
+      });
+
+      const blobUrl = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError("Failed to download backup");
+      console.error(err);
+    }
+  };
+
+  const deleteBackup = async (fileName) => {
+    if (!window.confirm(`Delete backup ${fileName}? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`/backups/file/${encodeURIComponent(fileName)}`);
+      fetchData();
+    } catch (err) {
+      setError("Failed to delete backup");
+      console.error(err);
+    }
+  };
+
   return (
     <div className="screen">
       <header className="screen-header">
@@ -409,10 +466,31 @@ function AdminPage() {
             <div className="btn-row" style={{ marginTop: "10px" }}>
               <button
                 className="btn btn-primary"
-                onClick={() => setShowAllOrders((prev) => !prev)}
+                onClick={() => setShowAllOrders(true)}
                 type="button"
               >
-                {showAllOrders ? "Hide All Orders" : "View All Orders"}
+                View All Orders
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowDailySales(true)}
+                type="button"
+              >
+                View Daily Sales
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowMonthlySales(true)}
+                type="button"
+              >
+                View Monthly Sales
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowLoyaltyLeaderboard(true)}
+                type="button"
+              >
+                View Loyalty Leaderboard
               </button>
             </div>
           </div>
@@ -433,14 +511,35 @@ function AdminPage() {
                 />
 
                 <input
-                  type="url"
-                  placeholder="Logo URL"
-                  value={businessSettings.logo_url}
-                  onChange={(e) =>
-                    setBusinessSettings({ ...businessSettings, logo_url: e.target.value })
-                  }
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={handleLogoFileChange}
                   className="field"
                 />
+
+                {(selectedLogoName || businessSettings.logo_url) && (
+                  <div className="card" style={{ padding: "10px" }}>
+                    {selectedLogoName && (
+                      <p className="mini-row" style={{ marginBottom: "8px" }}>
+                        Selected file: {selectedLogoName}
+                      </p>
+                    )}
+
+                    {businessSettings.logo_url && (
+                      <img
+                        src={businessSettings.logo_url}
+                        alt="Business logo preview"
+                        style={{ maxWidth: "220px", maxHeight: "120px", objectFit: "contain" }}
+                      />
+                    )}
+
+                    <div className="btn-row" style={{ marginTop: "8px" }}>
+                      <button className="btn btn-soft" type="button" onClick={clearLogo}>
+                        Remove Logo
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <input
                   type="text"
@@ -555,106 +654,166 @@ function AdminPage() {
           </div>
 
           {showAllOrders && (
-            <div className="card card-muted" style={{ marginBottom: "20px" }}>
-              <h2>All Orders</h2>
-
-              <form className="stack" style={{ marginTop: "10px", marginBottom: "12px" }} onSubmit={applyOrderFilters}>
-                <div className="grid-columns-2">
-                  <select
-                    className="field"
-                    value={orderFilters.status}
-                    onChange={(e) => setOrderFilters({ ...orderFilters, status: e.target.value })}
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="READY">Ready</option>
-                    <option value="COMPLETED">Completed</option>
-                  </select>
-
-                  <input
-                    className="field"
-                    placeholder="Phone contains"
-                    value={orderFilters.phone}
-                    onChange={(e) => setOrderFilters({ ...orderFilters, phone: e.target.value })}
-                  />
-
-                  <input
-                    className="field"
-                    placeholder="Token contains"
-                    value={orderFilters.token}
-                    onChange={(e) => setOrderFilters({ ...orderFilters, token: e.target.value })}
-                  />
-
-                  <input
-                    className="field"
-                    type="datetime-local"
-                    value={orderFilters.from}
-                    onChange={(e) => setOrderFilters({ ...orderFilters, from: e.target.value })}
-                  />
-
-                  <input
-                    className="field"
-                    type="datetime-local"
-                    value={orderFilters.to}
-                    onChange={(e) => setOrderFilters({ ...orderFilters, to: e.target.value })}
-                  />
+            <div className="modal-overlay" onClick={() => setShowAllOrders(false)}>
+              <div className="modal-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="All orders">
+                <div className="card-header" style={{ marginBottom: "4px" }}>
+                  <h2 style={{ margin: 0 }}>All Orders</h2>
+                  <button className="btn btn-soft" type="button" onClick={() => setShowAllOrders(false)}>
+                    Close
+                  </button>
                 </div>
 
-                <div className="btn-row">
-                  <button className="btn btn-primary" type="submit">Apply Filters</button>
-                  <button type="button" className="btn btn-soft" onClick={() => exportOrders("csv")}>Export CSV</button>
-                  <button type="button" className="btn btn-soft" onClick={() => exportOrders("pdf")}>Export PDF</button>
-                </div>
-              </form>
+                <form className="stack" style={{ marginTop: "10px", marginBottom: "12px" }} onSubmit={applyOrderFilters}>
+                  <div className="grid-columns-2">
+                    <select
+                      className="field"
+                      value={orderFilters.status}
+                      onChange={(e) => setOrderFilters({ ...orderFilters, status: e.target.value })}
+                    >
+                      <option value="">All Statuses</option>
+                      <option value="PENDING">Pending</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="READY">Ready</option>
+                      <option value="COMPLETED">Completed</option>
+                    </select>
 
-              {orders.length === 0 ? (
-                <p>No orders found</p>
-              ) : (
-                <div className="list" style={{ marginTop: "10px" }}>
-                  {orders.map((order) => (
-                    <article key={order.id} className="card">
-                      <p><strong>Token:</strong> {order.token_number}</p>
-                      <p className="mini-row"><strong>Phone:</strong> {order.customer_phone || "N/A"}</p>
-                      <p className="mini-row"><strong>Total:</strong> Rs. {order.total_amount}</p>
-                      <p className="mini-row"><strong>Status:</strong> {order.status}</p>
-                      <p className="mini-row"><strong>Points Earned:</strong> {order.points_earned || 0}</p>
-                      <p className="mini-row"><strong>Special Notes:</strong> {order.special_notes || "-"}</p>
-                      <p className="mini-row"><strong>Created:</strong> {new Date(order.created_at).toLocaleString()}</p>
-                    </article>
-                  ))}
-                </div>
-              )}
+                    <input
+                      className="field"
+                      placeholder="Phone contains"
+                      value={orderFilters.phone}
+                      onChange={(e) => setOrderFilters({ ...orderFilters, phone: e.target.value })}
+                    />
+
+                    <input
+                      className="field"
+                      placeholder="Token contains"
+                      value={orderFilters.token}
+                      onChange={(e) => setOrderFilters({ ...orderFilters, token: e.target.value })}
+                    />
+
+                    <input
+                      className="field"
+                      type="datetime-local"
+                      value={orderFilters.from}
+                      onChange={(e) => setOrderFilters({ ...orderFilters, from: e.target.value })}
+                    />
+
+                    <input
+                      className="field"
+                      type="datetime-local"
+                      value={orderFilters.to}
+                      onChange={(e) => setOrderFilters({ ...orderFilters, to: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="btn-row">
+                    <button className="btn btn-primary" type="submit">Apply Filters</button>
+                    <button type="button" className="btn btn-soft" onClick={() => exportOrders("csv")}>Export CSV</button>
+                    <button type="button" className="btn btn-soft" onClick={() => exportOrders("pdf")}>Export PDF</button>
+                  </div>
+                </form>
+
+                {orders.length === 0 ? (
+                  <p>No orders found</p>
+                ) : (
+                  <div className="list" style={{ marginTop: "10px" }}>
+                    {orders.map((order) => (
+                      <article key={order.id} className="card">
+                        <p><strong>Token:</strong> {order.token_number}</p>
+                        <p className="mini-row"><strong>Phone:</strong> {order.customer_phone || "N/A"}</p>
+                        <p className="mini-row"><strong>Total:</strong> Rs. {order.total_amount}</p>
+                        <p className="mini-row"><strong>Status:</strong> {order.status}</p>
+                        <p className="mini-row"><strong>Points Earned:</strong> {order.points_earned || 0}</p>
+                        <p className="mini-row"><strong>Special Notes:</strong> {order.special_notes || "-"}</p>
+                        <p className="mini-row"><strong>Created:</strong> {new Date(order.created_at).toLocaleString()}</p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          <div className="grid-columns-2" style={{ marginBottom: "20px" }}>
-            <div className="card card-muted">
-              <h2>Daily Sales</h2>
-              <div className="list" style={{ marginTop: "10px" }}>
-                {(salesSummary.daily || []).slice(0, 7).map((row) => (
-                  <div key={row.day} className="card">
-                    <p><strong>{row.day}</strong></p>
-                    <p className="mini-row">Orders: {row.orders_count}</p>
-                    <p className="mini-row">Sales: Rs. {row.sales_total}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {showDailySales && (
+            <div className="modal-overlay" onClick={() => setShowDailySales(false)}>
+              <div className="modal-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Daily sales">
+                <div className="card-header" style={{ marginBottom: "4px" }}>
+                  <h2 style={{ margin: 0 }}>Daily Sales</h2>
+                  <button className="btn btn-soft" type="button" onClick={() => setShowDailySales(false)}>
+                    Close
+                  </button>
+                </div>
 
-            <div className="card card-muted">
-              <h2>Monthly Sales</h2>
-              <div className="list" style={{ marginTop: "10px" }}>
-                {(salesSummary.monthly || []).slice(0, 6).map((row) => (
-                  <div key={row.month} className="card">
-                    <p><strong>{row.month}</strong></p>
-                    <p className="mini-row">Orders: {row.orders_count}</p>
-                    <p className="mini-row">Sales: Rs. {row.sales_total}</p>
+                {(salesSummary.daily || []).length === 0 ? (
+                  <p style={{ marginTop: "10px" }}>No daily sales data found</p>
+                ) : (
+                  <div className="list" style={{ marginTop: "10px" }}>
+                    {(salesSummary.daily || []).map((row) => (
+                      <div key={row.day} className="card">
+                        <p><strong>{row.day}</strong></p>
+                        <p className="mini-row">Orders: {row.orders_count}</p>
+                        <p className="mini-row">Sales: Rs. {row.sales_total}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             </div>
-          </div>
+          )}
+
+          {showMonthlySales && (
+            <div className="modal-overlay" onClick={() => setShowMonthlySales(false)}>
+              <div className="modal-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Monthly sales">
+                <div className="card-header" style={{ marginBottom: "4px" }}>
+                  <h2 style={{ margin: 0 }}>Monthly Sales</h2>
+                  <button className="btn btn-soft" type="button" onClick={() => setShowMonthlySales(false)}>
+                    Close
+                  </button>
+                </div>
+
+                {(salesSummary.monthly || []).length === 0 ? (
+                  <p style={{ marginTop: "10px" }}>No monthly sales data found</p>
+                ) : (
+                  <div className="list" style={{ marginTop: "10px" }}>
+                    {(salesSummary.monthly || []).map((row) => (
+                      <div key={row.month} className="card">
+                        <p><strong>{row.month}</strong></p>
+                        <p className="mini-row">Orders: {row.orders_count}</p>
+                        <p className="mini-row">Sales: Rs. {row.sales_total}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {showLoyaltyLeaderboard && (
+            <div className="modal-overlay" onClick={() => setShowLoyaltyLeaderboard(false)}>
+              <div className="modal-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Loyalty leaderboard">
+                <div className="card-header" style={{ marginBottom: "4px" }}>
+                  <h2 style={{ margin: 0 }}>Loyalty Leaderboard</h2>
+                  <button className="btn btn-soft" type="button" onClick={() => setShowLoyaltyLeaderboard(false)}>
+                    Close
+                  </button>
+                </div>
+
+                {loyaltyLeaderboard.length === 0 ? (
+                  <p className="mini-row" style={{ marginTop: "10px" }}>No loyalty members yet</p>
+                ) : (
+                  <div className="list" style={{ marginTop: "10px" }}>
+                    {loyaltyLeaderboard.map((member) => (
+                      <div key={member.customer_phone} className="card">
+                        <p><strong>{member.customer_phone}</strong></p>
+                        <p className="mini-row">Points: {member.points}</p>
+                        <p className="mini-row">Lifetime: {member.lifetime_points}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid-columns-2" style={{ marginBottom: "20px" }}>
             <div className="card card-muted">
@@ -678,31 +837,6 @@ function AdminPage() {
                     <p className="mini-row">Value: {promo.discount_value}</p>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            <div className="card card-muted">
-              <h2>Inventory Alerts</h2>
-              <form className="stack" style={{ marginTop: "10px" }} onSubmit={createIngredient}>
-                <input className="field" placeholder="Ingredient name" value={ingredientForm.name} onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })} />
-                <input className="field" type="number" placeholder="Stock quantity" value={ingredientForm.stock_quantity} onChange={(e) => setIngredientForm({ ...ingredientForm, stock_quantity: e.target.value })} />
-                <input className="field" placeholder="Unit (ml, g, piece)" value={ingredientForm.unit} onChange={(e) => setIngredientForm({ ...ingredientForm, unit: e.target.value })} />
-                <input className="field" type="number" placeholder="Reorder level" value={ingredientForm.reorder_level} onChange={(e) => setIngredientForm({ ...ingredientForm, reorder_level: e.target.value })} />
-                <button className="btn btn-primary" type="submit">Add Ingredient</button>
-              </form>
-
-              <div className="list" style={{ marginTop: "12px" }}>
-                {lowStockAlerts.length === 0 ? (
-                  <p className="mini-row">No low-stock alerts</p>
-                ) : (
-                  lowStockAlerts.map((item) => (
-                    <div className="card" key={item.id}>
-                      <p><strong>{item.name}</strong></p>
-                      <p className="mini-row">Stock: {item.stock_quantity} {item.unit}</p>
-                      <p className="mini-row">Reorder Level: {item.reorder_level}</p>
-                    </div>
-                  ))
-                )}
               </div>
             </div>
           </div>
@@ -790,9 +924,17 @@ function AdminPage() {
                       <p><strong>{backup.fileName}</strong></p>
                       <p className="mini-row">Size: {backup.sizeBytes} bytes</p>
                       <p className="mini-row">Modified: {new Date(backup.modifiedAt).toLocaleString()}</p>
-                      <button className="btn btn-danger" onClick={() => restoreBackup(backup.fileName)}>
-                        Restore
-                      </button>
+                      <div className="btn-row" style={{ marginTop: "8px" }}>
+                        <button className="btn btn-soft" onClick={() => downloadBackup(backup.fileName)}>
+                          Download
+                        </button>
+                        <button className="btn btn-danger" onClick={() => restoreBackup(backup.fileName)}>
+                          Restore
+                        </button>
+                        <button className="btn btn-danger" onClick={() => deleteBackup(backup.fileName)}>
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -800,26 +942,7 @@ function AdminPage() {
             </div>
           </div>
 
-          <div className="grid-columns-2">
-            <div className="card card-muted">
-              <h2>Loyalty Leaderboard</h2>
-
-              {loyaltyLeaderboard.length === 0 ? (
-                <p className="mini-row" style={{ marginTop: "10px" }}>No loyalty members yet</p>
-              ) : (
-                <div className="list" style={{ marginTop: "10px" }}>
-                  {loyaltyLeaderboard.map((member) => (
-                    <div key={member.customer_phone} className="card">
-                      <p><strong>{member.customer_phone}</strong></p>
-                      <p className="mini-row">Points: {member.points}</p>
-                      <p className="mini-row">Lifetime: {member.lifetime_points}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="card card-muted">
+          <div className="card card-muted" style={{ marginBottom: "20px" }}>
               <h2>Messaging</h2>
 
               <form onSubmit={sendMessage} className="stack" style={{ marginTop: "10px" }}>
@@ -861,7 +984,6 @@ function AdminPage() {
                   </div>
                 ))}
               </div>
-            </div>
           </div>
         </>
       )}
