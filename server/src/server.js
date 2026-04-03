@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const http = require("http");
 const morgan = require("morgan");
+const path = require("path");
 
 const menuRoutes = require("./routes/menuRoutes");
 const orderRoutes = require("./routes/orderRoutes");
@@ -50,6 +51,13 @@ app.use("/api/promotions", promoRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/backups", backupRoutes);
 app.use("/api/monitoring", monitoringRoutes);
+
+const clientDistPath = path.join(__dirname, "../../client/dist");
+app.use(express.static(clientDistPath));
+
+app.get(/^\/(?!api|socket\.io).*/, (req, res) => {
+  res.sendFile(path.join(clientDistPath, "index.html"));
+});
 
 setupSocket(server);
 
