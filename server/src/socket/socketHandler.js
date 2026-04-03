@@ -3,7 +3,8 @@ const { setSocketInstance } = require("../controllers/orderController");
 const { setSocketInstance: setMessageSocketInstance } = require("../controllers/messageController");
 
 const setupSocket = (server) => {
-  const io = new Server(server, {
+  const io = new 
+  Server(server, {
     cors: {
       origin: process.env.CLIENT_URL,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
