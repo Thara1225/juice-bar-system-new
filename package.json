@@ -3,8 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "npm install --prefix client && npm run build --prefix client && npm install --prefix server",
-    "start": "npm run start --prefix server --ignore-scripts"
+    "build": "npm install --prefix client && npm run build --prefix client && npm install --omit=dev --prefix server",
+    "start": "npm run start --prefix server --ignore-scripts --omit=dev"
   },
   "engines": {
     "node": ">=20"
