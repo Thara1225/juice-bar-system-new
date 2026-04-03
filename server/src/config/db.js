@@ -16,7 +16,19 @@ const resolveDatabaseUrl = () => {
   return resolved;
 };
 
-const connectionString = resolveDatabaseUrl();
+const normalizeSslMode = (rawUrl) => {
+  const parsed = new URL(rawUrl);
+  const sslmode = (parsed.searchParams.get("sslmode") || "").toLowerCase();
+
+  // Keep current secure behavior and avoid pg warning for deprecated aliases.
+  if (sslmode === "require") {
+    parsed.searchParams.set("sslmode", "verify-full");
+  }
+
+  return parsed.toString();
+};
+
+const connectionString = normalizeSslMode(resolveDatabaseUrl());
 const parsedUrl = new URL(connectionString);
 if (parsedUrl.hostname === "base") {
   throw new Error(
