@@ -56,14 +56,6 @@ function LoginPage({ onLogin }) {
             {loading ? "Signing In..." : "Sign In"}
           </button>
         </form>
-
-        <div className="card" style={{ marginTop: "14px" }}>
-          <p className="mini-row">Default users:</p>
-          <p className="mini-row">admin / Admin@123</p>
-          <p className="mini-row">cashier / Cashier@123</p>
-          <p className="mini-row">kitchen / Kitchen@123</p>
-          <p className="mini-row">display / Display@123</p>
-        </div>
       </div>
     </div>
   );
