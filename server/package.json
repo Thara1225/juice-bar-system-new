@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
+    "build:client": "npm run build --prefix ../client",
+    "prestart": "npm run build:client",
     "start": "node src/server.js",
     "backup": "node scripts/backup-db.js",
     "restore": "node scripts/restore-db.js"
