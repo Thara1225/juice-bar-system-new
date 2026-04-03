@@ -34,12 +34,22 @@ const runCommand = (command, args, env = process.env) => {
 };
 
 const parseDatabaseUrl = () => {
-  const raw = process.env.DATABASE_URL;
+  const raw =
+    process.env.NEON_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL;
+
   if (!raw) {
-    throw new Error("DATABASE_URL is not configured");
+    throw new Error("No database URL configured. Set NEON_DATABASE_URL or DATABASE_URL");
   }
 
   const parsed = new URL(raw);
+  if (parsed.hostname === "base") {
+    throw new Error(
+      "Invalid DB host 'base'. Set DATABASE_URL (or NEON_DATABASE_URL) directly to your Neon URL"
+    );
+  }
+
   const dbName = parsed.pathname.replace(/^\//, "");
 
   return {
