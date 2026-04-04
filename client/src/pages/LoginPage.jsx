@@ -4,6 +4,7 @@ import api from "../services/api";
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,13 +45,23 @@ function LoginPage({ onLogin }) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
-          <input
-            className="field"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="password-field-wrap">
+            <input
+              className="field password-field"
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="password-toggle-btn"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
           <button className="btn btn-primary" type="submit" disabled={loading}>
             {loading ? "Signing In..." : "Sign In"}

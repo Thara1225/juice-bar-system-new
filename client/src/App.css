@@ -289,6 +289,32 @@
   border-color: var(--accent);
 }
 
+.password-field-wrap {
+  position: relative;
+}
+
+.password-field {
+  padding-right: 68px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.password-toggle-btn:hover {
+  color: var(--text-main);
+}
+
 .btn {
   border: 1px solid transparent;
   border-radius: 10px;
