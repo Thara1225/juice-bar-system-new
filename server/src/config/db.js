@@ -46,7 +46,13 @@ const pool = new Pool({
 
 console.log(`DB target host: ${parsedUrl.hostname}`);
 
-pool.connect()
+pool.on("error", (err) => {
+  // Idle clients can emit errors during transient network resets; log without crashing the process.
+  console.error("❌ PostgreSQL pool error:", err.message);
+});
+
+pool
+  .query("SELECT 1")
   .then(() => {
     console.log("✅ PostgreSQL connected successfully");
   })
