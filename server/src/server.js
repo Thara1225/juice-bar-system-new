@@ -19,6 +19,7 @@ const userRoutes = require("./routes/userRoutes");
 const backupRoutes = require("./routes/backupRoutes");
 const initDb = require("./config/initDb");
 const { startBackupScheduler } = require("./services/backupScheduler");
+const { initMqtt } = require("./services/mqttService");
 const setupSocket = require("./socket/socketHandler");
 
 const app = express();
@@ -29,8 +30,15 @@ const allowedOrigins = (process.env.CLIENT_URL || "")
   .map((item) => item.trim())
   .filter(Boolean);
 
+const devOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+const corsOrigins = Array.from(new Set([...allowedOrigins, ...devOrigins]));
+
 app.use(cors({
-  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+  origin: corsOrigins.length > 0 ? corsOrigins : true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 }));
 app.use(morgan("combined"));
@@ -66,6 +74,7 @@ const PORT = process.env.PORT || 5000;
 initDb()
   .then(() => {
     startBackupScheduler();
+    initMqtt();
 
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

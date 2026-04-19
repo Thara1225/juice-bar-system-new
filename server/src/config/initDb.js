@@ -70,6 +70,7 @@ const initDb = async () => {
     ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal',
     ADD COLUMN IF NOT EXISTS prep_started_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS ready_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS prep_sla_minutes INTEGER DEFAULT 15,
     ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
   `);

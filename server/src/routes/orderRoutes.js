@@ -5,6 +5,7 @@ const {
   createOrder,
   getPendingOrders,
   getReadyOrders,
+  getDisplayBoardOrders,
   updateOrderStatus,
   getAllOrders,
   getSalesSummary,
@@ -20,6 +21,7 @@ router.get("/export", authenticate, authorize("admin"), exportOrders);
 router.get("/summary", authenticate, authorize("admin"), getSalesSummary);
 router.get("/pending", getPendingOrders);
 router.get("/ready", getReadyOrders);
+router.get("/display", getDisplayBoardOrders);
 router.get("/kitchen-assist-mode", getCashierKitchenAssistMode);
 router.patch("/kitchen-assist-mode", authenticate, authorize("admin"), setCashierKitchenAssistMode);
 router.patch("/:id/status", authenticate, authorize("admin", "kitchen", "cashier"), updateOrderStatus);
